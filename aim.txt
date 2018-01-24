@@ -1,0 +1,5 @@
+- create a data structure with load and save methods
+- use the net/http package to build web applications
+- use the html/template package to process HTML templates
+- use the regexp package to validate user input
+- use closures
