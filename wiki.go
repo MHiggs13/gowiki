@@ -3,6 +3,7 @@ package main
 import (
   "fmt"
   "io/ioutil"
+  "net/http"
 )
 
 // start by defining the datastructures
@@ -39,9 +40,38 @@ func loadPage(title string) (*Page, error) {
   return &Page{Title:title, Body: body}, nil
 }
 
+func viewHandler(w http.ResponseWriter, r *http.Request) {
+  // handles URLs prefixed with "/view/"
+  title := r.URL.Path[len("/view/"):]   // extracts the page title from url
+  // function loads the page data
+  p, _ := loadPage(title)   // generally bad practice to ignore the error here
+  // formats the page with a string of simple HTML, and writes it to w
+  fmt.Fprintf(w, "<h1>%s</h1><div>%s</div>", p.Title, p.Body)
+}
+
+func editHandler(w http.ResponseWriter, r *http.Request) {
+  title := r.URL.Path[len("/edit/"):]
+  p, err := loadPage(title)
+  if err != nil {
+    p = &Page{Title: title}
+  }
+  fmt.Fprintf(w, "<h1>Editing %s</h1>"+
+    "<form action\"/save/%s\" method\"POST\">"+
+    "<textarea name=\body\">%s</textarea><br>"+
+    "<input type=\"submit\" value=\"Save\">"+
+    "</form>",
+    p.Title, p.Title, p.Body)
+}
+
 func main() {
-  p1 := &Page{Title: "TestPage", Body: []byte("This is a sample Page.")}
-  p1.save()
-  p2, _ := loadPage("TestPage")
-  fmt.Println(string(p2.Body))
+  // p1 := &Page{Title: "TestPage", Body: []byte("This is a sample Page.")}
+  // p1.save()
+  // p2, _ := loadPage("TestPage")
+  // fmt.Println(string(p2.Body))
+
+  // lets the http know to respond to view, edit, save and etc
+  http.HandleFunc("/view/", viewHandler)
+  http.HandleFunc("/edit/", editHandler)
+  //http.HandleFunc("/save/", saveHandler)
+  http.ListenAndServe(":8080", nil)
 }
