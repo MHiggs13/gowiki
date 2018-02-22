@@ -1,7 +1,7 @@
 package main
 
 import (
-  "fmt"
+  "html/template"
   "io/ioutil"
   "net/http"
 )
@@ -32,10 +32,15 @@ func loadPage(title string) (*Page, error) {
   // _ throws away the error part of the return from ReadFile
   //body, _ := ioutil.ReadFile(filename)
   // instead we can do
+  // @@@@@@@ problem here
   body, err := ioutil.ReadFile(filename)
   if err != nil {
     return nil, err
   }
+  print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n")
+  print(filename, "\n")
+  print(title, "\n")
+  print(body, "\n")
   // callers can now check the second param, if it is nil  then a page is loaded successfully
   return &Page{Title:title, Body: body}, nil
 }
@@ -44,9 +49,13 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
   // handles URLs prefixed with "/view/"
   title := r.URL.Path[len("/view/"):]   // extracts the page title from url
   // function loads the page data
-  p, _ := loadPage(title)   // generally bad practice to ignore the error here
-  // formats the page with a string of simple HTML, and writes it to w
-  fmt.Fprintf(w, "<h1>%s</h1><div>%s</div>", p.Title, p.Body)
+  p, err := loadPage(title)   // generally bad practice to ignore the error here
+  if err != nil {
+    // if no page found create a page and let them edit it
+    http.Redirect(w,  r, "/edit/"+title, http.StatusFound)
+    return
+  }
+  renderTemplate(w, "view", p)
 }
 
 func editHandler(w http.ResponseWriter, r *http.Request) {
@@ -55,12 +64,15 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
   if err != nil {
     p = &Page{Title: title}
   }
-  fmt.Fprintf(w, "<h1>Editing %s</h1>"+
-    "<form action\"/save/%s\" method\"POST\">"+
-    "<textarea name=\body\">%s</textarea><br>"+
-    "<input type=\"submit\" value=\"Save\">"+
-    "</form>",
-    p.Title, p.Title, p.Body)
+  renderTemplate(w, "edit", p)
+}
+
+func renderTemplate(w http.ResponseWriter, tmpl string, p *Page) {
+  // html/templates pacakge helps with security, e.g. it auto escapes > to &gt
+  // template.ParseFiles reads the contents of edit.html and returns a *template.Template
+  t, _ := template.ParseFiles(tmpl + ".html")
+  // t.execute, executes the template by writing the generated HTML to the http.ResponseWriter
+  t.Execute(w, p)
 }
 
 func main() {
