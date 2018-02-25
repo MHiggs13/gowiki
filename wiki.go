@@ -13,6 +13,10 @@ type Page struct {
   Body  []byte    // a byte slice, type expect by th eio libraries
 }
 
+// loaded once, to avoid inefficiently load on demand everytime a page is rendered
+// template.Must is a convenience wrapper that panics when passed a non nil error value
+var templates = template.Must(template.ParseFiles("edit.html", "view.html"))
+
 func (p *Page) save() error {
   // save method to allow for persistent storage of a page        
   // Signature reads: this is a method named save that takes as its receive p, a pointer to Page,
@@ -67,12 +71,27 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
   renderTemplate(w, "edit", p)
 }
 
+func saveHandler(w http.ResponseWriter, r *http.Request) {
+  title := r.URL.Path[len("/save/"):]
+  body := r.FormValue("body")
+  // byte(body) converts body to a byte to go into the page struct
+  p := &Page{Title: title, Body: []byte(body)}
+  err := p.save()
+  if err != nil {
+    http.Error(w, err.Error(), http.StatusInternalServerError)
+    return
+  }
+  http.Redirect(w, r, "/view/"+title, http.StatusFound)
+}
+
 func renderTemplate(w http.ResponseWriter, tmpl string, p *Page) {
   // html/templates pacakge helps with security, e.g. it auto escapes > to &gt
   // template.ParseFiles reads the contents of edit.html and returns a *template.Template
-  t, _ := template.ParseFiles(tmpl + ".html")
   // t.execute, executes the template by writing the generated HTML to the http.ResponseWriter
-  t.Execute(w, p)
+  err := templates.ExecuteTemplate(w, tmpl+".html", p)
+  if err != nil  {
+    http.Error(w, err.Error(), http.StatusInternalServerError)
+  }
 }
 
 func main() {
@@ -84,6 +103,6 @@ func main() {
   // lets the http know to respond to view, edit, save and etc
   http.HandleFunc("/view/", viewHandler)
   http.HandleFunc("/edit/", editHandler)
-  //http.HandleFunc("/save/", saveHandler)
+  http.HandleFunc("/save/", saveHandler)
   http.ListenAndServe(":8080", nil)
 }
