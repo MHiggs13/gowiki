@@ -4,6 +4,8 @@ import (
   "html/template"
   "io/ioutil"
   "net/http"
+  "regexp"
+  "errors"
 )
 
 // start by defining the datastructures
@@ -16,6 +18,20 @@ type Page struct {
 // loaded once, to avoid inefficiently load on demand everytime a page is rendered
 // template.Must is a convenience wrapper that panics when passed a non nil error value
 var templates = template.Must(template.ParseFiles("edit.html", "view.html"))
+
+// valid path regex for a Title
+// MustCompile - panics where as Compile would return an error as a second param
+var validPath = regexp.MustCompile("^/(edit|save|view)/([a-zA-Z0-9]+)$")
+
+func getTitle(w http.ResponseWriter, r *http.Request) (string, error) {
+  // validates path and extracts the page title
+  m := validPath.FindStringSubmatch(r.URL.Path)
+  if m == nil {
+    http.NotFound(w, r)
+    return "", errors.New("Invalid Page Title")
+  }
+  return m[2], nil
+}
 
 func (p *Page) save() error {
   // save method to allow for persistent storage of a page        
@@ -49,9 +65,8 @@ func loadPage(title string) (*Page, error) {
   return &Page{Title:title, Body: body}, nil
 }
 
-func viewHandler(w http.ResponseWriter, r *http.Request) {
+func viewHandler(w http.ResponseWriter, r *http.Request, title string) {
   // handles URLs prefixed with "/view/"
-  title := r.URL.Path[len("/view/"):]   // extracts the page title from url
   // function loads the page data
   p, err := loadPage(title)   // generally bad practice to ignore the error here
   if err != nil {
@@ -62,8 +77,7 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
   renderTemplate(w, "view", p)
 }
 
-func editHandler(w http.ResponseWriter, r *http.Request) {
-  title := r.URL.Path[len("/edit/"):]
+func editHandler(w http.ResponseWriter, r *http.Request, title string) {
   p, err := loadPage(title)
   if err != nil {
     p = &Page{Title: title}
@@ -71,8 +85,7 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
   renderTemplate(w, "edit", p)
 }
 
-func saveHandler(w http.ResponseWriter, r *http.Request) {
-  title := r.URL.Path[len("/save/"):]
+func saveHandler(w http.ResponseWriter, r *http.Request, title string) {
   body := r.FormValue("body")
   // byte(body) converts body to a byte to go into the page struct
   p := &Page{Title: title, Body: []byte(body)}
@@ -82,6 +95,20 @@ func saveHandler(w http.ResponseWriter, r *http.Request) {
     return
   }
   http.Redirect(w, r, "/view/"+title, http.StatusFound)
+}
+
+func makeHandler(fn func (http.ResponseWriter, *http.Request, string))http.HandlerFunc {
+  // the returned function is a closure, it encloses the values defined outside of it      
+  return func(w http.ResponseWriter, r *http.Request) {
+    // here we will extract the page title from the request
+    // and call the provided handler 'fn'
+    m := validPath.FindStringSubmatch(r.URL.Path)
+    if m == nil {
+      http.NotFound(w, r)
+      return
+    }
+    fn(w, r, m[2])
+  }
 }
 
 func renderTemplate(w http.ResponseWriter, tmpl string, p *Page) {
@@ -101,8 +128,8 @@ func main() {
   // fmt.Println(string(p2.Body))
 
   // lets the http know to respond to view, edit, save and etc
-  http.HandleFunc("/view/", viewHandler)
-  http.HandleFunc("/edit/", editHandler)
-  http.HandleFunc("/save/", saveHandler)
+  http.HandleFunc("/view/", makeHandler(viewHandler))
+  http.HandleFunc("/edit/", makeHandler(editHandler))
+  http.HandleFunc("/save/", makeHandler(saveHandler))
   http.ListenAndServe(":8080", nil)
 }
